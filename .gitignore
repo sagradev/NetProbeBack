@@ -1,0 +1,17 @@
+target/
+*.class
+*.jar
+*.war
+*.ear
+
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+
+*.log
+startup.log
+startup-err.log
+
+.mvn/wrapper/maven-wrapper.jar
