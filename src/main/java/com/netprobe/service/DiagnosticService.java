@@ -28,7 +28,7 @@ public class DiagnosticService {
     // ─── Ping ─────────────────────────────────────────────────────────────────
 
     public PingResultDTO ping(PingRequestDTO req) {
-        var connReq = new ConnectionRequestDTO(req.ip(), req.username(), req.password());
+        var connReq = new ConnectionRequestDTO(req.ip(), req.username(), req.password(), req.port());
         try (var api = apiService.conectar(connReq)) {
             int count = req.count() > 0 ? req.count() : 4;
             var results = api.execute("/tool/ping address=" + req.target() + " count=" + count);
@@ -43,7 +43,7 @@ public class DiagnosticService {
     // ─── Traceroute ───────────────────────────────────────────────────────────
 
     public TracerouteResultDTO traceroute(TracerouteRequestDTO req) {
-        var connReq = new ConnectionRequestDTO(req.ip(), req.username(), req.password());
+        var connReq = new ConnectionRequestDTO(req.ip(), req.username(), req.password(), req.port());
         try (var api = apiService.conectar(connReq)) {
             var results = api.execute("/tool/traceroute address=" + req.target() + " count=1");
             return parseTraceroute(results);
@@ -57,7 +57,7 @@ public class DiagnosticService {
     // ─── Bandwidth Test ───────────────────────────────────────────────────────
 
     public BandwidthTestResultDTO bandwidthTest(BandwidthTestRequestDTO req) {
-        var connReq = new ConnectionRequestDTO(req.ip(), req.username(), req.password());
+        var connReq = new ConnectionRequestDTO(req.ip(), req.username(), req.password(), req.port());
         try (var api = apiService.conectar(connReq)) {
             int duration = req.duration() > 0 ? req.duration() : 10;
             api.setTimeout((duration + 15) * 1000);

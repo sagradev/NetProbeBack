@@ -21,7 +21,7 @@ import java.util.Map;
 public class MikrotikApiService {
 
     private static final Logger log = LoggerFactory.getLogger(MikrotikApiService.class);
-    private static final int PORT = 8728;
+    private static final int DEFAULT_PORT = 8728;
     private static final int LOG_LIMIT = 50;
 
     @Value("${mikrotik.connection.timeout}")
@@ -212,7 +212,9 @@ public class MikrotikApiService {
 
     ApiConnection conectar(ConnectionRequestDTO req) {
         try {
-            var conn = ApiConnection.connect(SocketFactory.getDefault(), req.ip(), PORT, connectionTimeout);
+            int port = (req.port() != null && req.port() > 0) ? req.port() : DEFAULT_PORT;
+            log.debug("Conectando em {}:{} (RouterOS API)", req.ip(), port);
+            var conn = ApiConnection.connect(SocketFactory.getDefault(), req.ip(), port, connectionTimeout);
             conn.login(req.username(), req.password());
             return conn;
         } catch (Exception e) {
