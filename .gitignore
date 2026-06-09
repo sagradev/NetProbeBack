@@ -1,17 +1,24 @@
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Java/Maven
 target/
 *.class
 *.jar
 *.war
-*.ear
 
+# IDEs
 .idea/
+.vscode/*
+!.vscode/settings.json
 *.iml
-*.ipr
-*.iws
-.vscode/
 
-*.log
-startup.log
-startup-err.log
+# OS
+.DS_Store
+Thumbs.db
 
-.mvn/wrapper/maven-wrapper.jar
+# Env
+.env
+.env.local
