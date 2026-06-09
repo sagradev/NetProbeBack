@@ -11,6 +11,7 @@ import org.springframework.web.filter.CorsFilter;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Configuration
 public class CorsConfig {
@@ -22,7 +23,9 @@ public class CorsConfig {
     public FilterRegistrationBean<CorsFilter> corsFilter() {
         var config = new CorsConfiguration();
 
-        List<String> origins = Arrays.asList(allowedOriginsConfig.split(","));
+        List<String> origins = Arrays.stream(allowedOriginsConfig.split(","))
+                .map(String::trim)
+                .collect(Collectors.toList());
         config.setAllowedOrigins(origins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"));
         config.setAllowedHeaders(List.of("*"));
