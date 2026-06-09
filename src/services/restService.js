@@ -5,8 +5,8 @@ const { MikrotikConnectionError, mapException } = require('../utils/errors');
 
 const LOG_LIMIT = 50;
 
-function buildClient(ip, username, password, timeout) {
-  return axios.create({ baseURL: `http://${ip}/rest`, auth: { username, password }, timeout });
+function buildClient(ip, port, username, password, timeout) {
+  return axios.create({ baseURL: `http://${ip}:${port}/rest`, auth: { username, password }, timeout });
 }
 
 async function get(client, path) {
@@ -31,9 +31,9 @@ function detectType(r) {
   return 'unknown';
 }
 
-async function isAvailable(ip, username, password, timeout) {
+async function isAvailable(ip, port, username, password, timeout) {
   try {
-    await axios.get(`http://${ip}/rest/system/resource`, {
+    await axios.get(`http://${ip}:${port}/rest/system/resource`, {
       auth: { username, password },
       timeout: Math.min(timeout, 3000),
       validateStatus: s => s === 200 || s === 401,
@@ -44,16 +44,18 @@ async function isAvailable(ip, username, password, timeout) {
   }
 }
 
+const toMB = (bytes) => Math.round(bytes / (1024 * 1024));
+
 function buildResources(res, ident) {
   return {
-    version: str(res, 'version'),
+    routerOsVersion: str(res, 'version'),
     uptime: str(res, 'uptime'),
     cpuLoad: num(res, 'cpu-load'),
-    totalMemory: num(res, 'total-memory'),
-    freeMemory: num(res, 'free-memory'),
-    totalHddSpace: num(res, 'total-hdd-space'),
-    freeHddSpace: num(res, 'free-hdd-space'),
-    name: str(ident, 'name'),
+    totalMemory: toMB(num(res, 'total-memory')),
+    freeMemory: toMB(num(res, 'free-memory')),
+    totalDisk: toMB(num(res, 'total-hdd-space')),
+    freeDisk: toMB(num(res, 'free-hdd-space')),
+    identity: str(ident, 'name'),
     platform: str(res, 'platform'),
     boardName: str(res, 'board-name'),
   };
@@ -69,7 +71,7 @@ const buildInterface = r => ({
 const buildRoute = r => ({
   dstAddress: str(r, 'dst-address'), gateway: str(r, 'gateway'),
   interface: str(r, 'interface'), active: bool(r, 'active'),
-  distance: num(r, 'distance'), type: detectType(r),
+  distance: num(r, 'distance'), routeType: detectType(r),
 });
 
 const buildArp = r => ({
@@ -86,7 +88,7 @@ const buildDhcp = r => ({
 const buildLog = r => ({ time: str(r, 'time'), topics: str(r, 'topics'), message: str(r, 'message') });
 
 async function getFullData(req, timeout) {
-  const client = buildClient(req.ip, req.username, req.password, timeout);
+  const client = buildClient(req.ip, req.port, req.username, req.password, timeout);
   const [res, ident, ifaces, routes, arp, dhcp, allLogs] = await Promise.all([
     get(client, '/system/resource'), get(client, '/system/identity'),
     get(client, '/interface'), get(client, '/ip/route'),
@@ -94,39 +96,39 @@ async function getFullData(req, timeout) {
   ]);
   const logs = allLogs.length > LOG_LIMIT ? allLogs.slice(-LOG_LIMIT) : allLogs;
   return {
-    resources: buildResources(res, ident),
+    systemResource: buildResources(res, ident),
     interfaces: ifaces.map(buildInterface),
     routes: routes.map(buildRoute),
-    arp: arp.map(buildArp),
-    dhcp: dhcp.map(buildDhcp),
+    arpEntries: arp.map(buildArp),
+    dhcpLeases: dhcp.map(buildDhcp),
     logs: logs.map(buildLog),
   };
 }
 
 async function getResources(req, timeout) {
-  const client = buildClient(req.ip, req.username, req.password, timeout);
+  const client = buildClient(req.ip, req.port, req.username, req.password, timeout);
   const [res, ident] = await Promise.all([get(client, '/system/resource'), get(client, '/system/identity')]);
   return buildResources(res, ident);
 }
 
 async function getInterfaces(req, timeout) {
-  return (await get(buildClient(req.ip, req.username, req.password, timeout), '/interface')).map(buildInterface);
+  return (await get(buildClient(req.ip, req.port, req.username, req.password, timeout), '/interface')).map(buildInterface);
 }
 
 async function getRoutes(req, timeout) {
-  return (await get(buildClient(req.ip, req.username, req.password, timeout), '/ip/route')).map(buildRoute);
+  return (await get(buildClient(req.ip, req.port, req.username, req.password, timeout), '/ip/route')).map(buildRoute);
 }
 
 async function getArp(req, timeout) {
-  return (await get(buildClient(req.ip, req.username, req.password, timeout), '/ip/arp')).map(buildArp);
+  return (await get(buildClient(req.ip, req.port, req.username, req.password, timeout), '/ip/arp')).map(buildArp);
 }
 
 async function getDhcp(req, timeout) {
-  return (await get(buildClient(req.ip, req.username, req.password, timeout), '/ip/dhcp-server/lease')).map(buildDhcp);
+  return (await get(buildClient(req.ip, req.port, req.username, req.password, timeout), '/ip/dhcp-server/lease')).map(buildDhcp);
 }
 
 async function getLogs(req, timeout) {
-  const all = await get(buildClient(req.ip, req.username, req.password, timeout), '/log');
+  const all = await get(buildClient(req.ip, req.port, req.username, req.password, timeout), '/log');
   return (all.length > LOG_LIMIT ? all.slice(-LOG_LIMIT) : all).map(buildLog);
 }
 

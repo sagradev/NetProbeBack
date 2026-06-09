@@ -30,12 +30,14 @@ function detectType(r) {
   return 'unknown';
 }
 
+const toMB = (bytes) => Math.round(bytes / (1024 * 1024));
+
 function buildResources(r, ident) {
   return {
-    version: str(r, 'version'), uptime: str(r, 'uptime'), cpuLoad: num(r, 'cpu-load'),
-    totalMemory: num(r, 'total-memory'), freeMemory: num(r, 'free-memory'),
-    totalHddSpace: num(r, 'total-hdd-space'), freeHddSpace: num(r, 'free-hdd-space'),
-    name: str(ident, 'name'), platform: str(r, 'platform'), boardName: str(r, 'board-name'),
+    routerOsVersion: str(r, 'version'), uptime: str(r, 'uptime'), cpuLoad: num(r, 'cpu-load'),
+    totalMemory: toMB(num(r, 'total-memory')), freeMemory: toMB(num(r, 'free-memory')),
+    totalDisk: toMB(num(r, 'total-hdd-space')), freeDisk: toMB(num(r, 'free-hdd-space')),
+    identity: str(ident, 'name'), platform: str(r, 'platform'), boardName: str(r, 'board-name'),
   };
 }
 
@@ -49,7 +51,7 @@ const buildInterface = r => ({
 const buildRoute = r => ({
   dstAddress: str(r, 'dst-address'), gateway: str(r, 'gateway'),
   interface: str(r, 'interface'), active: bool(r, 'active'),
-  distance: num(r, 'distance'), type: detectType(r),
+  distance: num(r, 'distance'), routeType: detectType(r),
 });
 
 const buildArp = r => ({
@@ -77,11 +79,11 @@ async function getFullData(req, timeout) {
     const allLogs = await api.execute('/log/print');
     const logs = allLogs.length > LOG_LIMIT ? allLogs.slice(-LOG_LIMIT) : allLogs;
     return {
-      resources: buildResources(res[0] || {}, ident[0] || {}),
+      systemResource: buildResources(res[0] || {}, ident[0] || {}),
       interfaces: ifaces.map(buildInterface),
       routes: routes.map(buildRoute),
-      arp: arp.map(buildArp),
-      dhcp: dhcp.map(buildDhcp),
+      arpEntries: arp.map(buildArp),
+      dhcpLeases: dhcp.map(buildDhcp),
       logs: logs.map(buildLog),
     };
   } finally {

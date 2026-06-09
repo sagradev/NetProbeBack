@@ -8,7 +8,7 @@ const { MikrotikConnectionError } = require('./utils/errors');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
-const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:4200')
+const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173')
   .split(',').map(o => o.trim());
 
 app.use(cors({

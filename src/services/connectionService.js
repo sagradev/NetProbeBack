@@ -6,7 +6,7 @@ const apiService = require('./apiService');
 const TIMEOUT = parseInt(process.env.MIKROTIK_CONNECTION_TIMEOUT || '5000', 10);
 
 async function delegate(req, method) {
-  const useRest = await restService.isAvailable(req.ip, req.username, req.password, TIMEOUT);
+  const useRest = await restService.isAvailable(req.ip, req.port, req.username, req.password, TIMEOUT);
   return useRest ? restService[method](req, TIMEOUT) : apiService[method](req, TIMEOUT);
 }
 

@@ -1,84 +1,93 @@
 'use strict';
 
 const apiService = require('./apiService');
+const axios = require('axios');
+const { MikrotikConnectionError, mapException } = require('../utils/errors');
 
-const TIMEOUT = parseInt(process.env.MIKROTIK_CONNECTION_TIMEOUT || '5000', 10);
+const API_PORT   = parseInt(process.env.MIKROTIK_API_PORT   || '8728',  10);
+const TIMEOUT    = parseInt(process.env.MIKROTIK_DIAG_TIMEOUT || '30000', 10);
+
+// Sempre usa o RouterOS API (porta 8728) para ferramentas de diagnóstico
+function apiReq(req) {
+  return { ip: req.ip, port: API_PORT, username: req.username, password: req.password };
+}
+
+// ── Ping ─────────────────────────────────────────────────────────────────────
 
 async function ping(req) {
-  const connReq = { ip: req.ip, username: req.username, password: req.password, port: req.port };
-  const api = await apiService.connect(connReq, TIMEOUT);
+  const count = req.count > 0 ? req.count : 4;
+  const api = await apiService.connect(apiReq(req), TIMEOUT);
   try {
-    const count = req.count > 0 ? req.count : 4;
     const results = await api.execute(`/tool/ping address=${req.target} count=${count}`);
-    return parsePing(results);
+    return parsePing(results, req.target);
   } finally { api.close(); }
 }
 
+function parsePing(results, target) {
+  const lines = [];
+  let sent = 0, received = 0, totalRtt = 0, rttCount = 0;
+
+  for (const r of results) {
+    if (r.seq != null && r.status !== 'timeout') {
+      const ms = parseFloat(String(r.time || '0').replace(/[^0-9.]/g, '')) || 0;
+      lines.push(`seq=${r.seq}  host=${r.host || target}  time=${r.time || '?'}`);
+      received++;
+      totalRtt += ms;
+      rttCount++;
+    } else if (r.seq != null) {
+      lines.push(`seq=${r.seq}  timeout`);
+    }
+    if (r.sent != null) sent = parseInt(r.sent) || sent;
+  }
+
+  if (sent === 0) sent = results.filter(r => r.seq != null).length;
+  const lost   = sent - received;
+  const avgRtt = rttCount > 0 ? Math.round(totalRtt / rttCount) : 0;
+  lines.push(`--- Enviados: ${sent}  Recebidos: ${received}  Perdidos: ${lost}  RTT médio: ${avgRtt}ms`);
+
+  return { lines, sent, received, lost, avgRtt };
+}
+
+// ── Traceroute ────────────────────────────────────────────────────────────────
+
 async function traceroute(req) {
-  const connReq = { ip: req.ip, username: req.username, password: req.password, port: req.port };
-  const api = await apiService.connect(connReq, TIMEOUT);
+  const api = await apiService.connect(apiReq(req), TIMEOUT);
   try {
-    const results = await api.execute(`/tool/traceroute address=${req.target} count=1`);
+    const results = await api.execute(`/tool/traceroute address=${req.target} count=3`);
     return parseTraceroute(results);
   } finally { api.close(); }
 }
 
+function parseTraceroute(results) {
+  const hops = results
+    .filter(r => r.hop != null)
+    .map(r => ({
+      hopNumber: parseInt(r.hop)  || 0,
+      address:   r.address        || '***',
+      hostname:  r.host           || '',
+      latency:   r.time           || '***',
+    }));
+  return { hops };
+}
+
+// ── Bandwidth Test ────────────────────────────────────────────────────────────
+
 async function bandwidthTest(req) {
-  const connReq = { ip: req.ip, username: req.username, password: req.password, port: req.port };
   const duration = req.duration > 0 ? req.duration : 10;
-  const api = await apiService.connect(connReq, (duration + 15) * 1000);
+  const api = await apiService.connect(apiReq(req), (duration + 15) * 1000);
   try {
     const results = await api.execute(
       `/tool/bandwidth-test address=${req.target} direction=${req.direction} duration=${duration}`
     );
-    return parseBandwidth(results);
+    return parseBandwidth(results, req.direction, duration);
   } finally { api.close(); }
 }
 
-function parsePing(results) {
-  const lines = [];
-  let sent = 0, received = 0, avgRtt = 'N/A';
-  for (const r of results) {
-    if (r.sent != null) {
-      sent = parseInt(r.sent) || 0;
-      received = parseInt(r.received) || 0;
-      avgRtt = r['avg-rtt'] || 'N/A';
-      const loss = sent > 0 ? Math.round((sent - received) * 100 / sent) : 0;
-      lines.push(`--- Enviados: ${sent}  Recebidos: ${received}  Perdidos: ${loss}%  RTT médio: ${avgRtt}`);
-    } else if (r.seq != null) {
-      lines.push(`seq=${r.seq || '?'}  host=${r.host || r.address || '?'}  time=${r.time || '?'}  (${r.status || '?'})`);
-    }
-  }
-  const loss = sent > 0 ? Math.round((sent - received) * 100 / sent) : 0;
-  return { lines, sent, received, loss, avgRtt };
-}
-
-function parseTraceroute(results) {
-  const hops = [];
-  for (const r of results) {
-    if (r.hop != null) {
-      hops.push({ hop: parseInt(r.hop) || 0, address: r.address || '***', time: r.time || '***', status: r.status || '' });
-    }
-  }
-  return { hops };
-}
-
-function parseBandwidth(results) {
-  if (!results.length) return { txCurrent: '0 bps', rxCurrent: '0 bps', lostPackets: '0', duration: '0' };
+function parseBandwidth(results, direction, duration) {
+  if (!results.length) return { txMbps: 0, rxMbps: 0, direction, duration };
   const last = results[results.length - 1];
-  return {
-    txCurrent: formatBps(last['tx-current'] || '0'),
-    rxCurrent: formatBps(last['rx-current'] || '0'),
-    lostPackets: last['lost-packets'] || '0',
-    duration: last.duration || '0',
-  };
-}
-
-function formatBps(raw) {
-  const bps = parseInt(String(raw).replace(/[^0-9]/g, ''), 10) || 0;
-  if (bps >= 1_000_000) return `${(bps / 1_000_000).toFixed(2)} Mbps`;
-  if (bps >= 1_000) return `${(bps / 1_000).toFixed(2)} Kbps`;
-  return `${bps} bps`;
+  const toMbps = v => Math.round((parseInt(String(v ?? '0').replace(/[^0-9]/g, ''), 10) / 1_000_000) * 100) / 100;
+  return { txMbps: toMbps(last['tx-current']), rxMbps: toMbps(last['rx-current']), direction, duration };
 }
 
 module.exports = { ping, traceroute, bandwidthTest };
