@@ -2,8 +2,11 @@
 
 const express = require('express');
 const cors = require('cors');
-const mikrotikRoutes = require('./routes/mikrotik');
+const mikrotikRoutes   = require('./routes/mikrotik');
 const diagnosticRoutes = require('./routes/diagnostic');
+const wifiRoutes       = require('./routes/wifi');
+const dhcpStaticRoutes = require('./routes/dhcpStatic');
+const macFilterRoutes  = require('./routes/macFilter');
 const { MikrotikConnectionError } = require('./utils/errors');
 
 const app = express();
@@ -21,14 +24,18 @@ app.use(cors({
 
 app.use(express.json());
 
-app.use('/api/mikrotik', mikrotikRoutes);
+app.use('/api/mikrotik',    mikrotikRoutes);
 app.use('/api/diagnostic', diagnosticRoutes);
+app.use('/api/wifi',       wifiRoutes);
+app.use('/api/dhcp-static', dhcpStaticRoutes);
+app.use('/api/mac-filter', macFilterRoutes);
 
 app.use((err, req, res, next) => {
   if (err instanceof MikrotikConnectionError) {
+    console.error(`[error] ${req.method} ${req.path} → 502 ${err.code}: ${err.message}`);
     return res.status(502).json({ error: err.message, code: err.code });
   }
-  console.error('Unexpected error:', err.message);
+  console.error(`[error] ${req.method} ${req.path} → 500:`, err.message);
   res.status(500).json({ error: err.message || 'Erro interno', code: 'INTERNAL_ERROR' });
 });
 

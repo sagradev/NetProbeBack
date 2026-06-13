@@ -108,23 +108,35 @@ class RouterOSAPI {
   }
 
   async login(username, password) {
+    // Passo 1: inicia login
     this._send(['/login']);
     const response = await this._readSentence();
+    console.log('[routeros] login passo1 resposta:', JSON.stringify(response));
+
     const challengeWord = response.find(w => w.startsWith('=ret='));
 
     if (challengeWord) {
+      // RouterOS v6: challenge MD5
       const challenge = challengeWord.substring(5);
+      console.log('[routeros] v6 challenge recebido, enviando MD5...');
       const md5 = crypto.createHash('md5');
       md5.update(Buffer.from([0]));
       md5.update(Buffer.from(password, 'utf8'));
       md5.update(Buffer.from(challenge, 'hex'));
       const hash = md5.digest('hex');
       this._send(['/login', `=name=${username}`, `=response=00${hash}`]);
-    } else {
+    } else if (response[0] === '!done') {
+      // RouterOS v7: retorna !done no passo 1, envia credenciais no passo 2
+      console.log('[routeros] v7 detectado, enviando credenciais...');
       this._send(['/login', `=name=${username}`, `=password=${password}`]);
+    } else {
+      const trapMsg = response.find(w => w.startsWith('=message='));
+      throw new Error(trapMsg ? trapMsg.substring(9) : 'cannot log in');
     }
 
+    // Passo 2: lê resposta final
     const loginResp = await this._readSentence();
+    console.log('[routeros] login passo2 resposta:', JSON.stringify(loginResp));
     if (loginResp[0] !== '!done') {
       const trapMsg = loginResp.find(w => w.startsWith('=message='));
       throw new Error(trapMsg ? trapMsg.substring(9) : 'cannot log in');
